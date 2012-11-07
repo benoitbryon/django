@@ -6,6 +6,7 @@ except ImportError:     # Python 2
     from urlparse import urlparse, urlunparse
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.core.urlresolvers import reverse_lazy
 from django.http import HttpResponseRedirect, QueryDict
 from django.utils.decorators import method_decorator
@@ -53,12 +54,25 @@ class CurrentSiteMixin(object):
         return context
 
 
-def is_valid_redirect(url, request, allow_empty=False): # XXX: Name?
-    """"Validate that the given URL is on the same host as the given request."""
+def validate_redirect_url(url, request, allow_empty=False):
+    """"Validate that ``url`` is a valid URL for use in redirections.
+
+    Raise ValidationError if:
+
+    * ``allow_empty`` is False and ``url`` is empty string.
+    * URL is not on the same host as the given request.
+
+    """
     if not url:
-        return allow_empty
-    netloc = urlparse(url)[1]
-    return not netloc or netloc == request.get_host()
+        if not allow_empty:
+            raise ValidationError("URL can't be empty.")
+    else:
+        netloc = urlparse(url)[1]
+        request_host = request.get_host()
+        if netloc and netloc != request_host:
+            raise ValidationError("URL must belong to '%s' host."
+                                  % request_host)
+    return url
 
 
 class LoginView(CurrentAppMixin, CurrentSiteMixin, generic.FormView):
@@ -112,7 +126,11 @@ class LoginView(CurrentAppMixin, CurrentSiteMixin, generic.FormView):
 
         """
         redir = self.request.REQUEST.get(self.redirect_field_name)
-        if not is_valid_redirect(redir, self.request, allow_empty=False):
+        try:
+            redir = validate_redirect_url(redir, self.request,
+                                          allow_empty=False)
+        except ValidationError:
+            # Silently fallback to settings.
             redir = settings.LOGIN_REDIRECT_URL
         return redir
 
@@ -151,12 +169,15 @@ class LogoutView(CurrentAppMixin, CurrentSiteMixin, generic.TemplateView):
 
         """
         redir = self.request.REQUEST.get(self.redirect_field_name)
-        if is_valid_redirect(redir, self.request, allow_empty=False):
-            return redir
-        elif self.success_url is not None:
-            return self.success_url or self.request.path
-        else:
-            return None
+        try:
+            return validate_redirect_url(redir, self.request,
+                                         allow_empty=False)
+        except ValidationError:
+            # Silently fallback to view's ``success_url`` or request.path.
+            if self.success_url is not None:
+                return self.success_url or self.request.path
+            else:
+                return None
 
 
 class LogoutThenLoginView(LogoutView):
