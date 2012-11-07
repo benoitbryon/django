@@ -130,8 +130,12 @@ class LoginView(CurrentAppMixin, CurrentSiteMixin, generic.FormView):
             redir = validate_redirect_url(redir, self.request,
                                           allow_empty=False)
         except ValidationError:
-            # Silently fallback to settings.
-            redir = settings.LOGIN_REDIRECT_URL
+            # Silently fallback to view's ``success_url``.
+            try:
+                redir = super(LoginView, self).get_success_url()
+            except ImproperlyConfigured:
+                # Silently fallback to settings.
+                redir = settings.LOGIN_REDIRECT_URL
         return redir
 
 
