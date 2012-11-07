@@ -72,7 +72,7 @@ class LoginView(CurrentAppMixin, CurrentSiteMixin, generic.FormView):
     @method_decorator(csrf_protect)
     @method_decorator(never_cache)
     def dispatch(self, request, *args, **kwargs):
-        request.session.set_test_cookie()
+        self.set_test_cookie(request)
         return super(LoginView, self).dispatch(request, *args, **kwargs)
 
     def get_form_kwargs(self):
@@ -85,16 +85,26 @@ class LoginView(CurrentAppMixin, CurrentSiteMixin, generic.FormView):
         context[self.redirect_field_name] = self.get_success_url()
         return context
 
-    def form_valid(self, form):
-        """Log the user in and redirect."""
-        auth_login(self.request, form.get_user())
+    def login(self, user):
+        """Log user in."""
+        auth_login(self.request, user)
 
+    def set_test_cookie(self, request):
+        """Set test cookie to request."""
+        request.session.set_test_cookie()
+
+    def unset_test_cookie(self):
+        """Cleanup test cookie if necessary."""
         if self.request.session.test_cookie_worked():
             self.request.session.delete_test_cookie()
 
+    def form_valid(self, form):
+        """Log the user in and redirect."""
+        self.login(form.get_user())
+        self.unset_test_cookie()
         # Redirect
         return super(LoginView, self).form_valid(form)
-    
+
     def get_success_url(self):
         """
         Look for a redirect URL in the request parameters.
