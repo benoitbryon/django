@@ -6,7 +6,7 @@ except ImportError:     # Python 2
     from urlparse import urlparse, urlunparse
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.urlresolvers import reverse_lazy
 from django.http import HttpResponseRedirect, QueryDict
 from django.utils.decorators import method_decorator
@@ -173,11 +173,17 @@ class LogoutView(CurrentAppMixin, CurrentSiteMixin, generic.TemplateView):
             return validate_redirect_url(redir, self.request,
                                          allow_empty=False)
         except ValidationError:
-            # Silently fallback to view's ``success_url`` or request.path.
-            if self.success_url is not None:
-                return self.success_url or self.request.path
-            else:
-                return None
+            # Silently fallback to view's ``success_url``.
+            try:
+                return super(LogoutView, self).get_success_url()
+            except ImproperlyConfigured:
+                # Silently fallback to current request.path if success_url has
+                # been set to empty value (except None).
+                if self.success_url is not None:
+                    return self.request.path
+                else:
+                    # Silently fallback to None.
+                    return None
 
 
 class LogoutThenLoginView(LogoutView):
